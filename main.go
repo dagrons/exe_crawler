@@ -1,6 +1,7 @@
 package main
 
 import (
+	"exe_crawler/exe_crawler"
 	"log"
 	"os"
 	"path/filepath"
@@ -8,24 +9,23 @@ import (
 
 func main() {
 	wd, _ := os.Getwd()
-	c, err := NewExeCrawler(WithAllowedDomains(
-		"www.onlyfreewares.com",
-		"www.portablefreeware.com",
-		"www.snapfiles.com",
-		"https://downloadcrew.com/",
-	),
-		WithStartPoints("http://www.portablefreeware.com/",
+
+	c, err := exe_crawler.New(exe_crawler.WithAllowedDomains(),
+		exe_crawler.WithStartPoints(
 			"https://downloadcrew.com/",
 			"https://www.snapfiles.com/new/list-whatsnew.html",
 			"http://www.onlyfreewares.com",
 		),
-		WithDownloadFolderPath(filepath.Join(wd, "downloads")),
-		WithDownloaderNum(100),
-		WithMaxDownLoadFileSize(50*(1<<20)),
-		WithIndexFile("index.csv"))
+		exe_crawler.WithDownloadFolderPath(filepath.Join(wd, "downloads")),
+		exe_crawler.WithDownloaderNum(100),
+		exe_crawler.WithMaxDownLoadFileSize(50*(1<<20)),
+		exe_crawler.WithIndexFile("index.csv"),
+		exe_crawler.WithQueueNum(100))
+
 	if err != nil {
 		log.Fatalf("err = %v", err)
 		return
 	}
+
 	c.Run()
 }
