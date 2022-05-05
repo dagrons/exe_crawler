@@ -28,7 +28,7 @@ type ExeCrawler struct {
 	downloadFolderPath  string
 	startPoints         []string
 	allowedDomains      []string
-	urls                chan string
+	urls                chan string // 可能是落地页的链接，存在不是落地页的链接，通过content-type进一步过滤
 	downloaderNum       int
 	maxDownloadFileSize int64
 	crawDone            chan struct{}
@@ -168,7 +168,7 @@ func (p *ExeCrawler) crawler() {
 		}
 		if strings.HasSuffix(link, ".exe") { // 下载所有带.exe后缀的链接
 			p.indexLock.Lock()
-			if _, ok := p.urlIndex[link]; !ok {
+			if _, ok := p.urlIndex[link]; !ok { // 不再重复访问落地页链接
 				p.urls <- link
 			}
 			p.indexLock.Unlock()
