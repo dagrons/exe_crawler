@@ -22,6 +22,10 @@ Crawler: crawl for .exe links
 
 Downloader: download .exe links
 
+## TODO
+
+- query part的处理
+
 ## go query selector cheatsheet
 
 这个东西基本上就是css选择器

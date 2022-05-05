@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -155,6 +156,15 @@ func (p *ExeCrawler) crawler() {
 
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) { // OnHTML并不是针对每一个html文档，而是针对匹配到的html元素
 		link := e.Attr("href")
+		if !(strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://")) { // link contains only query part
+			tmpUrl := e.Request.URL
+			url := &url.URL{
+				Scheme:  tmpUrl.Scheme,
+				Host:    tmpUrl.Host,
+				RawPath: link,
+			}
+			link = url.String()
+		}
 		if strings.HasSuffix(link, ".exe") { // 下载所有带.exe后缀的链接
 			p.indexLock.Lock()
 			if _, ok := p.urlIndex[link]; !ok {
