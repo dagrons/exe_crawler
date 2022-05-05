@@ -18,8 +18,8 @@ func main() {
 
 	c, err := exe_crawler.New(exe_crawler.WithAllowedDomains(),
 		exe_crawler.WithStartPoints(
-			"https://downloadcrew.com/",
 			"https://www.snapfiles.com/new/list-whatsnew.html",
+			"https://downloadcrew.com/",
 			"http://www.onlyfreewares.com",
 		),
 		exe_crawler.WithDownloaderNum(100),

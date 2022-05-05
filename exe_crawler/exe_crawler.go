@@ -22,6 +22,7 @@ import (
 )
 
 var ErrFileTooLarge = errors.New("file too large")
+var ErrInvalidContent = errors.New("content type invalid")
 
 type ExeCrawler struct {
 	downloadFolderPath  string
@@ -234,6 +235,10 @@ func (p *ExeCrawler) download(url string) error {
 		if downloadSize >= p.maxDownloadFileSize {
 			return ErrFileTooLarge
 		}
+		contentType := resp.Header.Get("Content-Type")
+		if contentType != "application/octet-stream" { // ignore non-binary content
+			return ErrInvalidContent
+		}
 	}
 
 	resp, err = client.Get(url)
@@ -246,6 +251,10 @@ func (p *ExeCrawler) download(url string) error {
 	downloadSize := int64(size)
 	if downloadSize >= p.maxDownloadFileSize {
 		return ErrFileTooLarge
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "application/octet-stream" { // ignore non-binary content
+		return ErrInvalidContent
 	}
 
 	// 用sha256作为文件名
