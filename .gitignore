@@ -1,4 +1,5 @@
-/downloads/
+/output/downloads/
 /exe_crawler
-/index.csv
+/output/index.csv
 /.idea
+/output/
