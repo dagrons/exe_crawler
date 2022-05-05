@@ -2,13 +2,19 @@ package main
 
 import (
 	"exe_crawler/exe_crawler"
+	"flag"
 	"log"
-	"os"
-	"path/filepath"
+)
+
+var (
+	downloadFolderPath string
+	indexFilePath      string
 )
 
 func main() {
-	wd, _ := os.Getwd()
+	flag.StringVar(&downloadFolderPath, "t", "", "download folder for exe")
+	flag.StringVar(&indexFilePath, "i", "", "index file path")
+	flag.Parse()
 
 	c, err := exe_crawler.New(exe_crawler.WithAllowedDomains(),
 		exe_crawler.WithStartPoints(
@@ -16,10 +22,10 @@ func main() {
 			"https://www.snapfiles.com/new/list-whatsnew.html",
 			"http://www.onlyfreewares.com",
 		),
-		exe_crawler.WithDownloadFolderPath(filepath.Join(wd, "downloads")),
 		exe_crawler.WithDownloaderNum(100),
 		exe_crawler.WithMaxDownLoadFileSize(50*(1<<20)),
-		exe_crawler.WithIndexFile("index.csv"),
+		exe_crawler.WithDownloadFolderPath(downloadFolderPath),
+		exe_crawler.WithIndexFile(indexFilePath),
 		exe_crawler.WithQueueNum(100))
 
 	if err != nil {
