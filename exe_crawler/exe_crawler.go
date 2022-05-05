@@ -28,17 +28,16 @@ type ExeCrawler struct {
 	downloadFolderPath  string
 	startPoints         []string
 	allowedDomains      []string
-	urls                chan string // 可能是落地页的链接，存在不是落地页的链接，通过content-type进一步过滤
+	urls                chan string // 等待被downloader消费url
 	downloaderNum       int
 	maxDownloadFileSize int64
 	crawDone            chan struct{}
-	indexLock           sync.Locker         // avoid concurrent rw for index
-	index               map[string]string   // 索引
-	indexFile           string              // 索引文件，从url->map[url]sha256
-	urlIndex            map[string]struct{} // 下载过的url链接
+	index               map[string]string   // 下载过的url链接
+	indexFile           string              // 下载过的url索引文件
+	urlIndex            map[string]struct{} // 下载过或者当前会话访问过的url链接
 	indexWriter         *csv.Writer
 	wg                  *sync.WaitGroup
-	lock                sync.Locker // lock for close p.urls
+	urlLock             sync.Locker // avoid concurrent close of p.urls
 	queueNum            int64
 }
 
@@ -118,8 +117,7 @@ func (p *ExeCrawler) Init() { // non-empty initialization
 	p.crawDone = make(chan struct{})
 	p.urlIndex = make(map[string]struct{})
 	p.wg = &sync.WaitGroup{}
-	p.lock = &sync.Mutex{}
-	p.indexLock = &sync.Mutex{}
+	p.urlLock = &sync.Mutex{}
 	p.index = make(map[string]string)
 	p.queueNum = 100
 }
@@ -167,11 +165,10 @@ func (p *ExeCrawler) crawler() {
 			link = url.String()
 		}
 		if strings.HasSuffix(link, ".exe") { // 下载所有带.exe后缀的链接
-			p.indexLock.Lock()
-			if _, ok := p.urlIndex[link]; !ok { // 不再重复访问落地页链接
+			if _, ok := p.urlIndex[link]; !ok { // link在当前会话或以前会话已经访问过
 				p.urls <- link
+				p.urlIndex[link] = struct{}{} // 当前会话已经访问过，不再重复访问
 			}
-			p.indexLock.Unlock()
 		} else {
 			q.AddURL(link)
 		}
@@ -202,11 +199,11 @@ func (p *ExeCrawler) downloader() {
 					}
 				default: // p.urls has no data available now
 					if _, ok := <-p.urls; ok { // no closed yet
-						p.lock.Lock()
+						p.urlLock.Lock()
 						if _, ok := <-p.urls; ok {
 							close(p.urls)
 						}
-						p.lock.Unlock()
+						p.urlLock.Unlock()
 					}
 					return
 				}
@@ -274,17 +271,14 @@ func (p *ExeCrawler) download(url string) error {
 		return err
 	}
 
-	p.indexLock.Lock()
-	if _, ok := p.urlIndex[url]; !ok {
+	if _, ok := p.index[fileName]; !ok {
 		p.index[fileName] = url
-		p.urlIndex[url] = struct{}{}
 		p.indexWriter.Write([]string{fileName, url})
 		p.indexWriter.Flush()
 		if p.indexWriter.Error() != nil {
 			return p.indexWriter.Error()
 		}
 	}
-	p.indexLock.Unlock()
 
 	return nil
 }
