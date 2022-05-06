@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"github.com/gocolly/colly"
 	"github.com/gocolly/colly/queue"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 var ErrFileTooLarge = errors.New("file too large")
@@ -32,13 +34,15 @@ type ExeCrawler struct {
 	downloaderNum       int
 	maxDownloadFileSize int64
 	crawDone            chan struct{}
-	index               map[string]string   // 下载过的url链接
-	indexFile           string              // 下载过的url索引文件
-	urlIndex            map[string]struct{} // 下载过或者当前会话访问过的url链接
+	index               sync.Map // 下载过的url链接
+	indexFileLocker     sync.Locker
+	indexFile           string   // 下载过的url索引文件
+	urlIndex            sync.Map // 下载过或者当前会话访问过的url链接
 	indexWriter         *csv.Writer
 	wg                  *sync.WaitGroup
-	urlLock             sync.Locker // avoid concurrent close of p.urls
+	urlLock             sync.Locker // avoid concurrent close of urls
 	queueNum            int64
+	downloadTimeout     time.Duration
 }
 
 type OptFunc func(crawler *ExeCrawler) error
@@ -103,10 +107,17 @@ func WithIndexFile(fpath string) OptFunc {
 		indexReader := csv.NewReader(f)
 		records, err = indexReader.ReadAll()
 		for i := range records {
-			crawler.index[records[i][0]] = records[i][1]
-			crawler.urlIndex[records[i][1]] = struct{}{}
+			crawler.index.Store(records[i][0], records[i][1])
+			crawler.urlIndex.Store(records[i][1], struct{}{})
 		}
 		crawler.indexWriter = csv.NewWriter(f)
+		return nil
+	}
+}
+
+func WithDownloadTimeout(timeout time.Duration) OptFunc {
+	return func(crawler *ExeCrawler) error {
+		crawler.downloadTimeout = timeout
 		return nil
 	}
 }
@@ -115,11 +126,12 @@ func (p *ExeCrawler) Init() { // non-empty initialization
 	p.downloaderNum = 10
 	p.urls = make(chan string, 100)
 	p.crawDone = make(chan struct{})
-	p.urlIndex = make(map[string]struct{})
+	p.urlIndex = sync.Map{}
 	p.wg = &sync.WaitGroup{}
 	p.urlLock = &sync.Mutex{}
-	p.index = make(map[string]string)
+	p.index = sync.Map{}
 	p.queueNum = 100
+	p.indexFileLocker = &sync.Mutex{}
 }
 
 func New(opts ...OptFunc) (*ExeCrawler, error) {
@@ -151,23 +163,36 @@ func (p *ExeCrawler) crawler() {
 	c := colly.NewCollector(
 		colly.AllowedDomains(p.allowedDomains...),
 	)
-	q, _ := queue.New(100, &queue.InMemoryQueueStorage{MaxSize: 1000000})
+	q, _ := queue.New(100, &queue.InMemoryQueueStorage{MaxSize: 100000000})
 
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) { // OnHTML并不是针对每一个html文档，而是针对匹配到的html元素
 		link := e.Attr("href")
 		if !(strings.HasPrefix(link, "http://") || strings.HasPrefix(link, "https://")) { // link contains only query part
 			tmpUrl := e.Request.URL
+			path := link
+			if !strings.HasPrefix(link, "/") { // 路径是同级目录
+				currentPath := tmpUrl.RawPath
+				i := len(currentPath) - 1
+				if i < 0 {
+					path = fmt.Sprintf("/%s", path)
+				} else {
+					for i >= 0 && currentPath[i] != '/' {
+						i--
+					}
+					path = fmt.Sprintf("%s/%s", currentPath[:i], path)
+				}
+			}
 			url := &url.URL{
 				Scheme:  tmpUrl.Scheme,
 				Host:    tmpUrl.Host,
-				RawPath: link,
+				RawPath: path,
 			}
 			link = url.String()
 		}
 		if strings.HasSuffix(link, ".exe") { // 下载所有带.exe后缀的链接
-			if _, ok := p.urlIndex[link]; !ok { // link在当前会话或以前会话已经访问过
+			if _, ok := p.urlIndex.Load(link); !ok {
 				p.urls <- link
-				p.urlIndex[link] = struct{}{} // 当前会话已经访问过，不再重复访问
+				p.urlIndex.Store(link, struct{}{})
 			}
 		} else {
 			q.AddURL(link)
@@ -222,23 +247,26 @@ func (p *ExeCrawler) download(url string) error {
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
 		},
+		Timeout: p.downloadTimeout,
 	}
 
 	log.Printf("downloading %s", url)
-	resp, err := client.Head(url)
+	headResp, err := client.Head(url)
 	if err == nil {
-		size, _ := strconv.Atoi(resp.Header.Get("Content-Length"))
+		defer headResp.Body.Close() // always remember to close io stream
+		size, _ := strconv.Atoi(headResp.Header.Get("Content-Length"))
 		downloadSize := int64(size)
 		if downloadSize >= p.maxDownloadFileSize {
 			return ErrFileTooLarge
 		}
-		contentType := resp.Header.Get("Content-Type")
+		contentType := headResp.Header.Get("Content-Type")
 		if contentType != "application/octet-stream" { // ignore non-binary content
 			return ErrInvalidContent
 		}
 	}
+	// else ignore it
 
-	resp, err = client.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
@@ -271,14 +299,15 @@ func (p *ExeCrawler) download(url string) error {
 		return err
 	}
 
-	if _, ok := p.index[fileName]; !ok {
-		p.index[fileName] = url
+	if _, ok := p.index.Load(fileName); !ok {
+		p.index.Store(fileName, url)
+		p.indexFileLocker.Lock()
+		defer p.indexFileLocker.Unlock()
 		p.indexWriter.Write([]string{fileName, url})
 		p.indexWriter.Flush()
 		if p.indexWriter.Error() != nil {
 			return p.indexWriter.Error()
 		}
 	}
-
 	return nil
 }

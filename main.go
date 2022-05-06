@@ -18,9 +18,7 @@ func main() {
 
 	c, err := exe_crawler.New(exe_crawler.WithAllowedDomains(),
 		exe_crawler.WithStartPoints(
-			"https://www.snapfiles.com/new/list-whatsnew.html",
-			"https://downloadcrew.com/",
-			"http://www.onlyfreewares.com",
+			"https://www.nchsoftware.com/",
 		),
 		exe_crawler.WithDownloaderNum(100),
 		exe_crawler.WithMaxDownLoadFileSize(50*(1<<20)),
