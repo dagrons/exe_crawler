@@ -260,7 +260,7 @@ func (p *ExeCrawler) download(url string) error {
 			return ErrFileTooLarge
 		}
 		contentType := headResp.Header.Get("Content-Type")
-		if contentType != "application/octet-stream" { // ignore non-binary content
+		if contentType != "application/octet-stream" && contentType != "application/x-msdos-program" { // ignore non-binary content
 			return ErrInvalidContent
 		}
 	}
@@ -278,7 +278,7 @@ func (p *ExeCrawler) download(url string) error {
 		return ErrFileTooLarge
 	}
 	contentType := resp.Header.Get("Content-Type")
-	if contentType != "application/octet-stream" { // ignore non-binary content
+	if contentType != "application/octet-stream" && contentType != "application/x-msdos-program" { // ignore non-binary content
 		return ErrInvalidContent
 	}
 
