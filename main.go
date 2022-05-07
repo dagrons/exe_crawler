@@ -11,14 +11,22 @@ var (
 	indexFilePath      string
 )
 
-func main() {
+func parseFlags() { // initial configurations
 	flag.StringVar(&downloadFolderPath, "t", "", "download folder for exe")
 	flag.StringVar(&indexFilePath, "i", "", "index file path")
 	flag.Parse()
+}
+
+func Init() {
+	parseFlags()
+}
+
+func main() {
+	Init()
 
 	c, err := exe_crawler.New(exe_crawler.WithAllowedDomains(),
 		exe_crawler.WithStartPoints(
-			"https://www.nchsoftware.com/",
+			"https://www.snapfiles.com/",
 		),
 		exe_crawler.WithDownloaderNum(100),
 		exe_crawler.WithMaxDownLoadFileSize(50*(1<<20)),
