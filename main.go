@@ -11,18 +11,10 @@ var (
 	indexFilePath      string
 )
 
-func parseFlags() { // initial configurations
+func main() {
 	flag.StringVar(&downloadFolderPath, "t", "", "download folder for exe")
 	flag.StringVar(&indexFilePath, "i", "", "index file path")
 	flag.Parse()
-}
-
-func Init() {
-	parseFlags()
-}
-
-func main() {
-	Init()
 
 	c, err := exe_crawler.New(exe_crawler.WithAllowedDomains(),
 		exe_crawler.WithStartPoints(
